@@ -205,7 +205,7 @@ void setup() {
     reinitializeRegisters();   // Reinitialize all relevant registers
 
     debugTStep();  // Check TSTEP value
-
+testSmallMovement();
     // Test small movement (optional)
     // Serial.println("Testing small movement...");
     // testSmallMovement();
