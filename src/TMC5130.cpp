@@ -37,7 +37,9 @@ TMC5130::TMC5130(uint8_t clk16Pin, uint8_t enPin, uint8_t csPin, uint8_t buttonP
     _targetPosition(0),
     _lastMoveTime(0),
     _moveDelay(500),
-    _pendingMoveRequests(0)
+    _pendingMoveRequests(0),
+    _microstepResolution(0b1000),  // Default to 1/256 microstepping
+    _stepsPerRevolution(51200) 
 {
 }
 
@@ -58,6 +60,9 @@ void TMC5130::begin() {
     Serial.println("Testing SPI...");
     reset();
     reinitializeRegisters();
+    
+    // Set initial microstepping resolution (e.g., 1/256)
+    setMicrostepResolution(0b1000);  // MRES = 0b1000 for 1/256 microstepping
     debugTStep();
 }
 
@@ -148,7 +153,7 @@ void TMC5130::configureMotor() {
 void TMC5130::configureChopper() {
     Serial.println("Configuring chopper for lower microstepping...");
     uint32_t chopconf = 0x000000C3;  // Base configuration with vsense=0
-    chopconf |= (0b1000 << 24);      // Set MRES bits (bits 24-27) to 0b0100 for 1/16 microstepping
+    chopconf |= ((uint32_t)_microstepResolution << 24);      // Set MRES bits (bits 24-27) to 0b0100 for 1/16 microstepping
     writeRegister(CHOPCONF, chopconf);
     chopconf = readRegister(CHOPCONF);
     Serial.print("CHOPCONF: 0x");
@@ -169,18 +174,27 @@ void TMC5130::configureMotion() {
     writeRegister(RAMPMODE, 0x00);
 }
 
-void TMC5130::moveMotor(int32_t position) {
-    Serial.print("Moving motor to position: ");
-    Serial.println(position);
+void TMC5130::moveMotor(int32_t positionInRevolutions) {
+    Serial.print("Moving motor by ");
+    Serial.print(positionInRevolutions);
+    Serial.println(" revolutions.");
+
+    int32_t targetSteps = positionInRevolutions * _stepsPerRevolution;
+
+    Serial.print("Calculated target steps: ");
+    Serial.println(targetSteps);
+
     
-    reapplyTargetPosition(position);
+    reapplyTargetPosition(targetSteps);
+
 
     while (true) {
         int32_t actual_pos = (int32_t)readRegister(XACTUAL);
         Serial.print("Current position: ");
         Serial.println(actual_pos);
 
-        if (abs(actual_pos - position) < 10) break;
+        if (abs(actual_pos - targetSteps) < (_stepsPerRevolution / 100))  // Allow some tolerance
+            break;
         delay(100);
     }
     Serial.println("Target position reached.");
@@ -214,17 +228,18 @@ void TMC5130::update() {
         Serial.println("Starting motor movement.");
     }
 
+
     if (_motorMoving) {
         if (_currentMove < _moveCount) {
             if (_targetPosition == 0 && (millis() - _lastMoveTime >= _moveDelay)) {
                 int32_t xactual = (int32_t)readRegister(XACTUAL);
-                _targetPosition = xactual + (3 * 51200);
+                _targetPosition = xactual + (3 * _stepsPerRevolution);
                 writeRegister(XTARGET, _targetPosition);
                 Serial.print("Moving to target position: ");
                 Serial.println(_targetPosition);
             } else if (_targetPosition != 0) {
                 int32_t xactual = (int32_t)readRegister(XACTUAL);
-                if (abs(xactual - _targetPosition) < 10) {
+                if (abs(xactual - _targetPosition) < (_stepsPerRevolution / 100)) {
                     Serial.println("Target reached.");
                     _currentMove++;
                     _targetPosition = 0;
@@ -389,4 +404,34 @@ void TMC5130::reinitializeRegisters() {
     uint32_t xactual = readRegister(XACTUAL);
     Serial.print("XACTUAL after reset: ");
     Serial.println(xactual);
+}
+
+void TMC5130::setMicrostepResolution(uint8_t mres) {
+    if (mres > 0b1000) {
+        Serial.println("Invalid microstep resolution. Must be between 0b0000 and 0b1000.");
+        return;
+    }
+    _microstepResolution = mres;
+    updateStepsPerRevolution();
+}
+
+uint8_t TMC5130::getMicrostepResolution() const {
+    return _microstepResolution;
+}
+
+uint32_t TMC5130::getStepsPerRevolution() const {
+    return _stepsPerRevolution;
+}
+
+void TMC5130::updateStepsPerRevolution() {
+    // Assuming a 200-step motor (1.8 degrees per step)
+    const uint16_t motorFullSteps = 200;
+
+    // Calculate microsteps per full step based on MRES
+    uint16_t microstepsPerFullStep = 1 << _microstepResolution;  // 2^MRES
+
+    _stepsPerRevolution = motorFullSteps * microstepsPerFullStep;
+
+    Serial.print("Updated steps per revolution: ");
+    Serial.println(_stepsPerRevolution);
 }

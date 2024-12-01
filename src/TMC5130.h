@@ -13,6 +13,10 @@ private:
     const uint8_t _csPin;
     const uint8_t _buttonPin;
 
+    // New private members
+    uint8_t _microstepResolution;  // MRES value (0b0000 to 0b1000)
+    uint32_t _stepsPerRevolution;  // Calculated steps per revolution based on MRES and motor steps
+
     // Button/Switch handling variables
     int _buttonState;
     int _lastButtonState;
@@ -36,6 +40,7 @@ private:
     void configureMotion();
     void reapplyTargetPosition(int32_t target);
     void debugTStep();
+    void updateStepsPerRevolution();
 
 public:
     // Constructor
@@ -52,6 +57,9 @@ public:
     void monitorDriver();
     void update();  // This will replace the loop() function
     void reinitializeRegisters();
+    void setMicrostepResolution(uint8_t mres);
+    uint8_t getMicrostepResolution() const;
+    uint32_t getStepsPerRevolution() const;
 };
 
 #endif // TMC5130_H
