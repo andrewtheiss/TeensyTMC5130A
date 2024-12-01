@@ -119,7 +119,8 @@ void TMC5130::writeRegister(uint8_t reg, uint32_t value) {
 
 void TMC5130::configureMotor() {
     Serial.println("Configuring motor...");
-    writeRegister(IHOLD_IRUN, 0x000F1F10);
+    writeRegister(IHOLD_IRUN, 0x00061F10);  // IHOLDDELAY=6, IRUN=31, IHOLD=16
+   // writeRegister(IHOLD_IRUN, 0x000F1F10);
     delay(100);
     
     uint32_t ihold = readRegister(IHOLD_IRUN);
@@ -130,10 +131,26 @@ void TMC5130::configureMotor() {
     configureMotion();
 }
 
+// Adjust the vsense Bit in CHOPCONF: The vsense bit determines the full-scale voltage of the sense resistor,
+// affecting the maximum motor current. Setting vsense to 0 allows for a higher full-scale voltage, thereby 
+// increasing the maximum current through the motor coils.
+// Microstepping Resolution Values (MRES bits 24-27):
+// Microsteps	MRES Value
+// Full step	0b0000
+// 1/2	0b0001
+// 1/4	0b0010
+// 1/8	0b0011
+// 1/16	0b0100
+// 1/32	0b0101
+// 1/64	0b0110
+// 1/128	0b0111
+// 1/256	0b1000
 void TMC5130::configureChopper() {
-    Serial.println("Configuring chopper...");
-    writeRegister(CHOPCONF, 0x000100C3);
-    uint32_t chopconf = readRegister(CHOPCONF);
+    Serial.println("Configuring chopper for lower microstepping...");
+    uint32_t chopconf = 0x000000C3;  // Base configuration with vsense=0
+    chopconf |= (0b1000 << 24);      // Set MRES bits (bits 24-27) to 0b0100 for 1/16 microstepping
+    writeRegister(CHOPCONF, chopconf);
+    chopconf = readRegister(CHOPCONF);
     Serial.print("CHOPCONF: 0x");
     Serial.println(chopconf, HEX);
 }
@@ -144,9 +161,9 @@ void TMC5130::configureMotion() {
     writeRegister(VSTART, 10);
     writeRegister(A1, 5000);
     writeRegister(V1, 100000);
-    writeRegister(AMAX, 10000);
+    writeRegister(AMAX, 2000);
     writeRegister(VMAX, 400000);
-    writeRegister(DMAX, 5000);
+    writeRegister(DMAX, 4000);
     writeRegister(D1, 1000);
     writeRegister(VSTOP, 10);
     writeRegister(RAMPMODE, 0x00);
